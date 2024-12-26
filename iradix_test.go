@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 package iradix
 
 import (
@@ -11,18 +14,19 @@ import (
 	"testing/quick"
 
 	"github.com/hashicorp/go-uuid"
+	"golang.org/x/exp/slices"
 )
 
-func CopyTree(t *Tree) *Tree {
-	nt := &Tree{
+func CopyTree[T any](t *Tree[T]) *Tree[T] {
+	nt := &Tree[T]{
 		root: CopyNode(t.root),
 		size: t.size,
 	}
 	return nt
 }
 
-func CopyNode(n *Node) *Node {
-	nn := &Node{}
+func CopyNode[T any](n *Node[T]) *Node[T] {
+	nn := new(Node[T])
 	if n.mutateCh != nil {
 		nn.mutateCh = n.mutateCh
 	}
@@ -34,17 +38,17 @@ func CopyNode(n *Node) *Node {
 		nn.leaf = CopyLeaf(n.leaf)
 	}
 	if len(n.edges) != 0 {
-		nn.edges = make([]edge, len(n.edges))
-		for idx, edge := range n.edges {
-			nn.edges[idx].label = edge.label
-			nn.edges[idx].node = CopyNode(edge.node)
+		nn.edges = make([]edge[T], len(n.edges))
+		for idx, ed := range n.edges {
+			nn.edges[idx].label = ed.label
+			nn.edges[idx].node = CopyNode(ed.node)
 		}
 	}
 	return nn
 }
 
-func CopyLeaf(l *leafNode) *leafNode {
-	ll := &leafNode{
+func CopyLeaf[T any](l *leafNode[T]) *leafNode[T] {
+	ll := &leafNode[T]{
 		mutateCh: l.mutateCh,
 		key:      l.key,
 		val:      l.val,
@@ -53,7 +57,7 @@ func CopyLeaf(l *leafNode) *leafNode {
 }
 
 func TestRadix_HugeTxn(t *testing.T) {
-	r := New()
+	r := New[int]()
 
 	// Insert way more nodes than the cache can fit
 	txn1 := r.Txn()
@@ -71,7 +75,7 @@ func TestRadix_HugeTxn(t *testing.T) {
 
 	// Collect the output, should be sorted
 	var out []string
-	fn := func(k []byte, v interface{}) bool {
+	fn := func(k []byte, v int) bool {
 		out = append(out, string(k))
 		return false
 	}
@@ -90,7 +94,7 @@ func TestRadix_HugeTxn(t *testing.T) {
 
 func TestRadix(t *testing.T) {
 	var min, max string
-	inp := make(map[string]interface{})
+	inp := make(map[string]int)
 	for i := 0; i < 1000; i++ {
 		gen, err := uuid.GenerateUUID()
 		if err != nil {
@@ -105,7 +109,7 @@ func TestRadix(t *testing.T) {
 		}
 	}
 
-	r := New()
+	r := New[int]()
 	rCopy := CopyTree(r)
 	for k, v := range inp {
 		newR, _, _ := r.Insert([]byte(k), v)
@@ -166,7 +170,7 @@ func TestRadix(t *testing.T) {
 }
 
 func TestRoot(t *testing.T) {
-	r := New()
+	r := New[bool]()
 	r, _, ok := r.Delete(nil)
 	if ok {
 		t.Fatalf("bad")
@@ -186,7 +190,7 @@ func TestRoot(t *testing.T) {
 }
 
 func TestInsert_UpdateFeedback(t *testing.T) {
-	r := New()
+	r := New[any]()
 	txn1 := r.Txn()
 
 	for i := 0; i < 10; i++ {
@@ -206,7 +210,7 @@ func TestInsert_UpdateFeedback(t *testing.T) {
 }
 
 func TestDelete(t *testing.T) {
-	r := New()
+	r := New[bool]()
 	s := []string{"", "A", "AB"}
 
 	for _, ss := range s {
@@ -308,7 +312,7 @@ func TestDeletePrefix(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.desc, func(t *testing.T) {
-			r := New()
+			r := New[bool]()
 			for _, ss := range testCase.treeNodes {
 				r, _, _ = r.Insert([]byte(ss), true)
 			}
@@ -336,7 +340,7 @@ func TestDeletePrefix(t *testing.T) {
 
 func TestTrackMutate_DeletePrefix(t *testing.T) {
 
-	r := New()
+	r := New[any]()
 
 	keys := []string{
 		"foo",
@@ -420,10 +424,10 @@ func TestTrackMutate_DeletePrefix(t *testing.T) {
 
 }
 
-func verifyTree(t *testing.T, expected []string, r *Tree) {
+func verifyTree[T any](t *testing.T, expected []string, r *Tree[T]) {
 	root := r.Root()
-	out := []string{}
-	fn := func(k []byte, v interface{}) bool {
+	var out []string
+	fn := func(k []byte, v T) bool {
 		out = append(out, string(k))
 		return false
 	}
@@ -435,7 +439,7 @@ func verifyTree(t *testing.T, expected []string, r *Tree) {
 }
 
 func TestLongestPrefix(t *testing.T) {
-	r := New()
+	r := New[any]()
 
 	keys := []string{
 		"",
@@ -484,7 +488,7 @@ func TestLongestPrefix(t *testing.T) {
 }
 
 func TestWalkPrefix(t *testing.T) {
-	r := New()
+	r := New[any]()
 
 	keys := []string{
 		"foobar",
@@ -549,7 +553,7 @@ func TestWalkPrefix(t *testing.T) {
 
 	root := r.Root()
 	for _, test := range cases {
-		out := []string{}
+		var out []string
 		fn := func(k []byte, v interface{}) bool {
 			out = append(out, string(k))
 			return false
@@ -557,14 +561,14 @@ func TestWalkPrefix(t *testing.T) {
 		root.WalkPrefix([]byte(test.inp), fn)
 		sort.Strings(out)
 		sort.Strings(test.out)
-		if !reflect.DeepEqual(out, test.out) {
+		if !slices.Equal(out, test.out) {
 			t.Fatalf("mis-match: %v %v", out, test.out)
 		}
 	}
 }
 
 func TestWalkPath(t *testing.T) {
-	r := New()
+	r := New[any]()
 
 	keys := []string{
 		"foo",
@@ -622,7 +626,7 @@ func TestWalkPath(t *testing.T) {
 
 	root := r.Root()
 	for _, test := range cases {
-		out := []string{}
+		var out []string
 		fn := func(k []byte, v interface{}) bool {
 			out = append(out, string(k))
 			return false
@@ -630,14 +634,14 @@ func TestWalkPath(t *testing.T) {
 		root.WalkPath([]byte(test.inp), fn)
 		sort.Strings(out)
 		sort.Strings(test.out)
-		if !reflect.DeepEqual(out, test.out) {
+		if !slices.Equal(out, test.out) {
 			t.Fatalf("mis-match: %v %v", out, test.out)
 		}
 	}
 }
 
 func TestIteratePrefix(t *testing.T) {
-	r := New()
+	r := New[any]()
 
 	keys := []string{
 		"foo/bar/baz",
@@ -722,7 +726,7 @@ func TestIteratePrefix(t *testing.T) {
 		}
 
 		// Consume all the keys
-		out := []string{}
+		var out []string
 		for {
 			key, _, ok := iter.Next()
 			if !ok {
@@ -730,21 +734,21 @@ func TestIteratePrefix(t *testing.T) {
 			}
 			out = append(out, string(key))
 		}
-		if !reflect.DeepEqual(out, test.out) {
+		if !slices.Equal(out, test.out) {
 			t.Fatalf("mis-match: %d %v %v", idx, out, test.out)
 		}
 	}
 }
 
 func TestMergeChildNilEdges(t *testing.T) {
-	r := New()
+	r := New[int]()
 	r, _, _ = r.Insert([]byte("foobar"), 42)
 	r, _, _ = r.Insert([]byte("foozip"), 43)
 	r, _, _ = r.Delete([]byte("foobar"))
 
 	root := r.Root()
-	out := []string{}
-	fn := func(k []byte, v interface{}) bool {
+	var out []string
+	fn := func(k []byte, v int) bool {
 		out = append(out, string(k))
 		return false
 	}
@@ -753,13 +757,13 @@ func TestMergeChildNilEdges(t *testing.T) {
 	expect := []string{"foozip"}
 	sort.Strings(out)
 	sort.Strings(expect)
-	if !reflect.DeepEqual(out, expect) {
+	if !slices.Equal(out, expect) {
 		t.Fatalf("mis-match: %v %v", out, expect)
 	}
 }
 
 func TestMergeChildVisibility(t *testing.T) {
-	r := New()
+	r := New[int]()
 	r, _, _ = r.Insert([]byte("foobar"), 42)
 	r, _, _ = r.Insert([]byte("foobaz"), 43)
 	r, _, _ = r.Insert([]byte("foozip"), 10)
@@ -839,7 +843,7 @@ func isClosed(ch chan struct{}) bool {
 
 // hasAnyClosedMutateCh scans the given tree and returns true if there are any
 // closed mutate channels on any nodes or leaves.
-func hasAnyClosedMutateCh(r *Tree) bool {
+func hasAnyClosedMutateCh[T any](r *Tree[T]) bool {
 	for iter := r.root.rawIterator(); iter.Front() != nil; iter.Next() {
 		n := iter.Front()
 		if isClosed(n.mutateCh) {
@@ -854,7 +858,7 @@ func hasAnyClosedMutateCh(r *Tree) bool {
 
 func TestTrackMutate_SeekPrefixWatch(t *testing.T) {
 	for i := 0; i < 3; i++ {
-		r := New()
+		r := New[any]()
 
 		keys := []string{
 			"foo/bar/baz",
@@ -991,7 +995,7 @@ func TestTrackMutate_SeekPrefixWatch(t *testing.T) {
 
 func TestTrackMutate_GetWatch(t *testing.T) {
 	for i := 0; i < 3; i++ {
-		r := New()
+		r := New[any]()
 
 		keys := []string{
 			"foo/bar/baz",
@@ -1232,7 +1236,7 @@ func TestTrackMutate_GetWatch(t *testing.T) {
 }
 
 func TestTrackMutate_HugeTxn(t *testing.T) {
-	r := New()
+	r := New[any]()
 
 	keys := []string{
 		"foo/bar/baz",
@@ -1374,7 +1378,7 @@ func TestTrackMutate_mergeChild(t *testing.T) {
 	//     (aca)  (acb)
 	//
 	for i := 0; i < 3; i++ {
-		r := New()
+		r := New[any]()
 		r, _, _ = r.Insert([]byte("ab"), nil)
 		r, _, _ = r.Insert([]byte("aca"), nil)
 		r, _, _ = r.Insert([]byte("acb"), nil)
@@ -1446,7 +1450,7 @@ func TestTrackMutate_cachedNodeChange(t *testing.T) {
 	// Then it makes a modification to the "aca" leaf on a node that will
 	// be in the cache, so this makes sure that the leaf watch fires.
 	for i := 0; i < 3; i++ {
-		r := New()
+		r := New[any]()
 		r, _, _ = r.Insert([]byte("ab"), nil)
 		r, _, _ = r.Insert([]byte("aca"), nil)
 		r, _, _ = r.Insert([]byte("acb"), nil)
@@ -1500,7 +1504,7 @@ func TestTrackMutate_cachedNodeChange(t *testing.T) {
 }
 
 func TestLenTxn(t *testing.T) {
-	r := New()
+	r := New[any]()
 
 	if r.Len() != 0 {
 		t.Fatalf("not starting with empty tree")
@@ -1731,7 +1735,7 @@ func TestIterateLowerBound(t *testing.T) {
 
 	for idx, test := range cases {
 		t.Run(fmt.Sprintf("case%03d", idx), func(t *testing.T) {
-			r := New()
+			r := New[any]()
 
 			// Insert keys
 			for _, k := range test.keys {
@@ -1750,7 +1754,7 @@ func TestIterateLowerBound(t *testing.T) {
 			iter.SeekLowerBound([]byte(test.search))
 
 			// Consume all the keys
-			out := []string{}
+			var out []string
 			for {
 				key, _, ok := iter.Next()
 				if !ok {
@@ -1758,7 +1762,7 @@ func TestIterateLowerBound(t *testing.T) {
 				}
 				out = append(out, string(key))
 			}
-			if !reflect.DeepEqual(out, test.want) {
+			if !slices.Equal(out, test.want) {
 				t.Fatalf("mis-match: key=%s\n  got=%v\n  want=%v", test.search,
 					out, test.want)
 			}
@@ -1785,8 +1789,8 @@ func (s readableString) Generate(rand *rand.Rand, size int) reflect.Value {
 }
 
 func TestIterateLowerBoundFuzz(t *testing.T) {
-	r := New()
-	set := []string{}
+	r := New[any]()
+	var set []string
 
 	// This specifies a property where each call adds a new random key to the radix
 	// tree.
@@ -1802,7 +1806,7 @@ func TestIterateLowerBoundFuzz(t *testing.T) {
 
 		// Now iterate the tree from searchKey to the end
 		it := r.Root().Iterator()
-		result := []string{}
+		var result []string
 		it.SeekLowerBound([]byte(searchKey))
 		for {
 			key, _, ok := it.Next()
@@ -1822,7 +1826,7 @@ func TestIterateLowerBoundFuzz(t *testing.T) {
 		t.Logf("Current Set: %#v", set)
 		t.Logf("Search Key: %#v %v", searchKey, "" >= string(searchKey))
 
-		result := []string{}
+		var result []string
 		for i, k := range set {
 			// Check this is not a duplicate of the previous value. Note we don't just
 			// store the last string to compare because empty string is a valid value
@@ -1843,7 +1847,7 @@ func TestIterateLowerBoundFuzz(t *testing.T) {
 }
 
 func TestClone(t *testing.T) {
-	r := New()
+	r := New[int]()
 
 	t1 := r.Txn()
 	t1.Insert([]byte("foo"), 7)
