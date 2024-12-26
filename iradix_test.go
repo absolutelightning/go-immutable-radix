@@ -1877,7 +1877,7 @@ func TestClone(t *testing.T) {
 }
 
 func TestBulkInsert(t *testing.T) {
-	r := New()
+	r := New[any]()
 
 	keys := []string{
 		"foobar",
@@ -1934,7 +1934,7 @@ func TestBulkInsert(t *testing.T) {
 }
 
 func TestMultipleBulkInsert(t *testing.T) {
-	r := New()
+	r := New[any]()
 
 	keys := []string{
 		"foobar",
@@ -2038,7 +2038,7 @@ func BenchmarkInsertLotOfWords(b *testing.B) {
 		lines = append(lines, line)
 	}
 
-	r := New()
+	r := New[any]()
 	b.ResetTimer()
 
 	for indx, line := range lines {
@@ -2083,7 +2083,7 @@ func BenchmarkBulkInsertLotOfWords(b *testing.B) {
 
 	b.ResetTimer()
 
-	r := New()
+	r := New[any]()
 	r, _ = r.BulkInsert(keys, vals)
 
 	for indx, line := range lines {
@@ -2104,7 +2104,7 @@ func BenchmarkInsertLotOfUUIDs(b *testing.B) {
 
 	b.ResetTimer()
 
-	r := New()
+	r := New[any]()
 	for i := 0; i < b.N; i++ {
 		r, _, _ = r.Insert(keys[i], vals[i])
 	}
@@ -2121,7 +2121,7 @@ func BenchmarkBulkInsertLotOfUUIDs(b *testing.B) {
 
 	b.ResetTimer()
 
-	r := New()
+	r := New[any]()
 	r, _ = r.BulkInsert(keys, vals)
 }
 
@@ -2197,7 +2197,7 @@ func BenchmarkInsertLotOfUUIDsAndSearch(b *testing.B) {
 
 	b.ResetTimer()
 
-	r := New()
+	r := New[any]()
 	for i := 0; i < b.N; i++ {
 		r, _, _ = r.Insert(keys[i], vals[i])
 	}
@@ -2219,7 +2219,7 @@ func BenchmarkBulkInsertLotOfUUIDsAndSearch(b *testing.B) {
 
 	b.ResetTimer()
 
-	r := New()
+	r := New[any]()
 	r, _ = r.BulkInsert(keys, vals)
 
 	if r.Len() != b.N {

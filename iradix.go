@@ -250,7 +250,7 @@ func (t *Txn[T]) mergeChild(n *Node[T]) {
 }
 
 // insert does a recursive insertion
-func (t *Txn[T]) bulkInsert(n *Node[T], keys [][]byte, searches []int, vals []interface{}) (*Node[T], int) {
+func (t *Txn[T]) bulkInsert(n *Node[T], keys [][]byte, searches []int, vals []T) (*Node[T], int) {
 	newNodesCount := 0
 	groups := make(map[byte][]int)
 
@@ -381,7 +381,7 @@ func (t *Txn[T]) bulkInsert(n *Node[T], keys [][]byte, searches []int, vals []in
 				}
 			}
 			subKeys := make([][]byte, 0, len(subGroupsAllConsumed))
-			subVals := make([]interface{}, 0, len(subGroupsAllConsumed))
+			subVals := make([]T, 0, len(subGroupsAllConsumed))
 			subSearches := make([]int, 0, len(subGroupsAllConsumed))
 			for _, indx := range subGroupsAllConsumed {
 				subKeys = append(subKeys, keys[indx])
@@ -622,11 +622,11 @@ func (t *Txn[T]) Insert(k []byte, v T) (T, bool) {
 	return oldVal, didUpdate
 }
 
-func sortKeysAndValues(keys [][]byte, values []interface{}) {
+func (t *Txn[T]) sortKeysAndValues(keys [][]byte, values []T) {
 	// Create a combined structure for sorting
 	type keyValue struct {
 		key   []byte
-		value interface{}
+		value T
 		index int // Preserve original index
 	}
 
@@ -656,7 +656,7 @@ func sortKeysAndValues(keys [][]byte, values []interface{}) {
 
 	// Create new slices for unique keys and values
 	uniqueKeys := make([][]byte, 0, len(keys))
-	uniqueValues := make([]interface{}, 0, len(values))
+	uniqueValues := make([]T, 0, len(values))
 
 	// Iterate through sorted keyValues and keep the last occurrence of each key
 	for i := 0; i < len(keyValues); i++ {
@@ -676,9 +676,9 @@ func sortKeysAndValues(keys [][]byte, values []interface{}) {
 	values = values[:len(uniqueValues)]
 }
 
-func (t *Txn[T]) BulkInsert(keys [][]byte, vals []interface{}) int {
+func (t *Txn[T]) BulkInsert(keys [][]byte, vals []T) int {
 	//Validate if the keys are unique
-	sortKeysAndValues(keys, vals)
+	t.sortKeysAndValues(keys, vals)
 	search := make([]int, len(keys))
 	newRoot, newNodesCount := t.bulkInsert(t.root, keys, search, vals)
 	if newRoot != nil {
@@ -848,7 +848,7 @@ func (t *Tree[T]) Insert(k []byte, v T) (*Tree[T], T, bool) {
 	return txn.Commit(), old, ok
 }
 
-func (t *Tree[T]) BulkInsert(keys [][]byte, vals []interface{}) (*Tree[T], int) {
+func (t *Tree[T]) BulkInsert(keys [][]byte, vals []T) (*Tree[T], int) {
 	txn := t.Txn()
 	newNodesAdded := txn.BulkInsert(keys, vals)
 	return txn.Commit(), newNodesAdded
