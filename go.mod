@@ -1,7 +1,5 @@
 module github.com/hashicorp/go-immutable-radix/v2
 
-go 1.18
-
 go 1.22.4
 
 require (
