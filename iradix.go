@@ -250,7 +250,7 @@ func (t *Txn[T]) mergeChild(n *Node[T]) {
 }
 
 // insert does a recursive insertion
-func (t *Txn) bulkInsert(n *Node, keys [][]byte, searches []int, vals []interface{}) (*Node, int) {
+func (t *Txn[T]) bulkInsert(n *Node[T], keys [][]byte, searches []int, vals []interface{}) (*Node[T], int) {
 	newNodesCount := 0
 	groups := make(map[byte][]int)
 
@@ -262,7 +262,7 @@ func (t *Txn) bulkInsert(n *Node, keys [][]byte, searches []int, vals []interfac
 			if nc.isLeaf() {
 				didUpdate = true
 			}
-			nc.leaf = &leafNode{
+			nc.leaf = &leafNode[T]{
 				mutateCh: make(chan struct{}),
 				key:      keys[indx],
 				val:      vals[indx],
@@ -280,11 +280,11 @@ func (t *Txn) bulkInsert(n *Node, keys [][]byte, searches []int, vals []interfac
 			groups[keys[indx][search:][0]] = append(groups[keys[indx][search:][0]], indx)
 			continue
 		}
-		e := edge{
+		e := edge[T]{
 			label: keys[indx][search:][0],
-			node: &Node{
+			node: &Node[T]{
 				mutateCh: make(chan struct{}),
-				leaf: &leafNode{
+				leaf: &leafNode[T]{
 					mutateCh: make(chan struct{}),
 					key:      keys[indx],
 					val:      vals[indx],
@@ -305,25 +305,25 @@ func (t *Txn) bulkInsert(n *Node, keys [][]byte, searches []int, vals []interfac
 				commonPrefix := longestPrefix(keys[indx][searches[indx]:], child.prefix)
 				if commonPrefix < len(child.prefix) {
 					// Split the node
-					splitNode := &Node{
+					splitNode := &Node[T]{
 						mutateCh: make(chan struct{}),
 						prefix:   keys[indx][searches[indx] : searches[indx]+commonPrefix],
 					}
-					nc.replaceEdge(edge{
+					nc.replaceEdge(edge[T]{
 						label: keys[indx][searches[indx]:][0],
 						node:  splitNode,
 					})
 
 					// Restore the existing child node
 					modChild := t.writeNode(child, false)
-					splitNode.addEdge(edge{
+					splitNode.addEdge(edge[T]{
 						label: modChild.prefix[commonPrefix],
 						node:  modChild,
 					})
 					modChild.prefix = modChild.prefix[commonPrefix:]
 
 					// Create a new leaf node
-					leaf := &leafNode{
+					leaf := &leafNode[T]{
 						mutateCh: make(chan struct{}),
 						key:      keys[indx],
 						val:      vals[indx],
@@ -339,9 +339,9 @@ func (t *Txn) bulkInsert(n *Node, keys [][]byte, searches []int, vals []interfac
 					}
 
 					// Create a new edge for the node
-					splitNode.addEdge(edge{
+					splitNode.addEdge(edge[T]{
 						label: keys[indx][searches[indx]:][0],
-						node: &Node{
+						node: &Node[T]{
 							mutateCh: make(chan struct{}),
 							leaf:     leaf,
 							prefix:   keys[indx][searches[indx]:],
@@ -676,7 +676,7 @@ func sortKeysAndValues(keys [][]byte, values []interface{}) {
 	values = values[:len(uniqueValues)]
 }
 
-func (t *Txn) BulkInsert(keys [][]byte, vals []interface{}) int {
+func (t *Txn[T]) BulkInsert(keys [][]byte, vals []interface{}) int {
 	//Validate if the keys are unique
 	sortKeysAndValues(keys, vals)
 	search := make([]int, len(keys))
@@ -848,7 +848,7 @@ func (t *Tree[T]) Insert(k []byte, v T) (*Tree[T], T, bool) {
 	return txn.Commit(), old, ok
 }
 
-func (t *Tree) BulkInsert(keys [][]byte, vals []interface{}) (*Tree, int) {
+func (t *Tree[T]) BulkInsert(keys [][]byte, vals []interface{}) (*Tree[T], int) {
 	txn := t.Txn()
 	newNodesAdded := txn.BulkInsert(keys, vals)
 	return txn.Commit(), newNodesAdded
